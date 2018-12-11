@@ -278,21 +278,21 @@ tape('name_encoding', function (t) {
   packet.name.encode(data, buf, offset)
   t.ok(packet.name.encode.bytes === 17, 'name encoding length matches')
   let dd = packet.name.decode(buf, offset)
-  t.ok(data === dd, 'encode/decode matches')
+  t.ok(compare(t, data, dd), 'encode/decode matches')
   offset += packet.name.encode.bytes
 
   data = 'com'
   packet.name.encode(data, buf, offset)
   t.ok(packet.name.encode.bytes === 5, 'name encoding length matches')
   dd = packet.name.decode(buf, offset)
-  t.ok(data === dd, 'encode/decode matches')
+  t.ok(compare(t, data, dd), 'encode/decode matches')
   offset += packet.name.encode.bytes
 
   data = 'example.com.'
   packet.name.encode(data, buf, offset)
   t.ok(packet.name.encode.bytes === 13, 'name encoding length matches')
   dd = packet.name.decode(buf, offset)
-  t.ok(data.slice(0, -1) === dd, 'encode/decode matches')
+  t.ok(compare(t, data.slice(0, -1), dd), 'encode/decode matches')
   offset += packet.name.encode.bytes
 
   data = '.'
@@ -300,6 +300,19 @@ tape('name_encoding', function (t) {
   t.ok(packet.name.encode.bytes === 1, 'name encoding length matches')
   dd = packet.name.decode(buf, offset)
   t.ok(data === dd, 'encode/decode matches')
+  t.end()
+})
+
+tape('general_name_encoding', function (t) {
+  let data = new packet.DNSName(['foo.dot', 'example', 'com'])
+  const buf = Buffer.allocUnsafe(255)
+  let offset = 0
+  packet.name.encode(data, buf, offset)
+  t.ok(packet.name.encode.bytes === 21, 'name encoding length matches')
+  let dd = packet.name.decode(buf, offset)
+  t.ok(data.labels.join('!!!') === dd.labels.join('!!!'), 'encode/decode matches')
+  offset += packet.name.encode.bytes
+
   t.end()
 })
 
@@ -523,6 +536,8 @@ function testEncoder (t, rpacket, val) {
 
 function compare (t, a, b) {
   if (Buffer.isBuffer(a)) return a.toString('hex') === b.toString('hex')
+  if (b instanceof packet.DNSName) return packet.DNSName.from(a).dnsEqual(b)
+  if (a instanceof packet.DNSName) return a.dnsEqual(packet.DNSName.from(b))
   if (typeof a === 'object' && a && b) {
     const keys = Object.keys(a)
     for (let i = 0; i < keys.length; i++) {

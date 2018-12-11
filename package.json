@@ -13,10 +13,11 @@
     "test": "eslint --color *.js examples/*.js && tape test.js"
   },
   "dependencies": {
-    "ip": "^1.1.5"
+    "ip": "^1.1.5",
+    "dns-equal": "^1.0.0"
   },
   "devDependencies": {
-    "eslint": "^5.7.0",
+    "eslint": "^5.10.0",
     "eslint-config-standard": "^12.0.0",
     "eslint-plugin-import": "^2.14.0",
     "eslint-plugin-node": "^7.0.1",

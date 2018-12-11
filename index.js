@@ -5,6 +5,7 @@ const rcodes = require('./rcodes')
 const opcodes = require('./opcodes')
 const classes = require('./classes')
 const ip = require('ip')
+const dnsEqual = require('dns-equal')
 
 const QUERY_FLAG = 0
 const RESPONSE_FLAG = 1 << 15
@@ -15,21 +16,64 @@ const NOT_QU_MASK = ~QU_MASK
 
 const name = exports.txt = exports.name = {}
 
-name.encode = function (str, buf, offset) {
-  if (!buf) buf = Buffer.allocUnsafe(name.encodingLength(str))
+// DNS labels *conventionally* follow the
+// ["LDH convention"](https://tools.ietf.org/html/rfc1035#section-2.3.1),
+// where applications choose to produce labels drawing only on
+// alphabetic and numeric ASCII characters, plus hyphen.
+//
+// However, some applications do not wish to follow this convention:
+// for example, mDNS names frequently include UTF-8 text, sometimes
+// including ".", which is otherwise used to separate labels.
+//
+// Here, we support only UTF-8 labels; general binary data in a
+// label will have to wait for another day. However, we take care to
+// allow "." in labels by representing a DNS name as a list of
+// labels, each a string.
+//
+function DNSName (labels) {
+  this.labels = labels
+}
+exports.DNSName = DNSName
+
+DNSName.from = function (other) {
+  if (other instanceof DNSName) return other
+  if (typeof other === 'string') return DNSName.fromString(other)
+  const e = new Error('Cannot convert object to DNSName')
+  e.irritant = other
+  throw e
+}
+
+DNSName.fromString = function (str) {
+  // strip leading and trailing .
+  const n = str.replace(/^\.|\.$/gm, '')
+  return new DNSName(n.length ? n.split('.') : [])
+}
+
+DNSName.prototype.toString = function () {
+  return this.labels.join('.')
+  // NB. ^ erases distinction between intra-label '.' and label-separating '.'
+}
+
+DNSName.prototype.dnsEqual = function (other) {
+  if (!(other instanceof DNSName)) return false
+  if (this.labels.length !== other.labels.length) return false
+  for (let i = 0; i < this.labels.length; i++) {
+    if (!dnsEqual(this.labels[i], other.labels[i])) return false
+  }
+  return true
+}
+
+name.encode = function (dnsname, buf, offset) {
+  dnsname = DNSName.from(dnsname)
+  if (!buf) buf = Buffer.allocUnsafe(name.encodingLength(dnsname))
   if (!offset) offset = 0
   const oldOffset = offset
 
-  // strip leading and trailing .
-  const n = str.replace(/^\.|\.$/gm, '')
-  if (n.length) {
-    const list = n.split('.')
-
-    for (let i = 0; i < list.length; i++) {
-      const len = buf.write(list[i], offset + 1)
-      buf[offset] = len
-      offset += len + 1
-    }
+  const list = dnsname.labels
+  for (let i = 0; i < list.length; i++) {
+    const len = buf.write(list[i], offset + 1)
+    buf[offset] = len
+    offset += len + 1
   }
 
   buf[offset++] = 0
@@ -70,14 +114,18 @@ name.decode = function (buf, offset) {
   }
 
   name.decode.bytes = offset - oldOffset
-  return list.join('.')
+  return new DNSName(list)
 }
 
 name.decode.bytes = 0
 
 name.encodingLength = function (n) {
-  if (n === '.') return 1
-  return Buffer.byteLength(n) + 2
+  n = DNSName.from(n)
+  let len = 1 // for the terminating 00 byte
+  for (let i = 0; i < n.labels.length; i++) {
+    len += Buffer.byteLength(n.labels[i]) + 1 // 1-byte prefix, plus content
+  }
+  return len
 }
 
 const string = {}
